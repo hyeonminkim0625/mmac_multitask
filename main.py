@@ -246,7 +246,7 @@ def train_one_epoch(model,ema_model,criterion,mixup_fn,train_dataset_dataloader,
 
     supconloss = SupConLoss(temperature=0.1)
 
-    for samples,supcon_samples in zip(metric_logger.log_every(train_dataset_dataloader, print_freq, header),train_dataset_dataloader_supcon):
+    for samples in metric_logger.log_every(train_dataset_dataloader, print_freq, header):
         
         imgs = samples['img'].to(device,non_blocking=True)
 
@@ -257,11 +257,6 @@ def train_one_epoch(model,ema_model,criterion,mixup_fn,train_dataset_dataloader,
 
         task = samples['task'].to(device,non_blocking=True)
         lam = np.random.beta(0.8, 0.8)
-
-
-        supcon_imgs = supcon_samples['img'].to(device,non_blocking=True)
-        supcon_task1_target = supcon_samples['task1_target'].to(device,non_blocking=True)
-
     
         if scaler is not None:
             with autocast():
@@ -280,33 +275,6 @@ def train_one_epoch(model,ema_model,criterion,mixup_fn,train_dataset_dataloader,
             loss = loss_task1+ loss_task21+ loss_task22 + loss_task23 + loss_task3
             loss.backward()
             
-            imgs = supcon_imgs
-            task1_target = supcon_task1_target
-            bsz = imgs.shape[0]
-
-            flip = random.randint(1,3)
-            if flip==1:
-                imgs_flip = torchvision.transforms.functional.vflip(imgs)
-            elif flip==2:
-                imgs_flip = torchvision.transforms.functional.hflip(imgs)
-            elif flip==3:
-                imgs_flip = torchvision.transforms.functional.vflip(imgs)
-                imgs_flip = torchvision.transforms.functional.hflip(imgs_flip)
-            
-            imgs = torch.cat([imgs,imgs_flip],dim=0)
-            
-            task1_target = torch.argmax(task1_target,dim=1)
-            task = torch.ones((bsz*2)).to(device,non_blocking=True)
-
-            _,_,_,_,_,task1_features = model(imgs,task,1)
-            f1, f2 = torch.split(task1_features, [bsz, bsz], dim=0)
-            task1_features = torch.cat([f1.unsqueeze(1), f2.unsqueeze(1)], dim=1)
-
-            sloss = supconloss(task1_features, task1_target)
-            print(sloss)
-            sloss.backward()
-            
-
             optimizer.step()
             optimizer.zero_grad()
             ema_model.update(model)
